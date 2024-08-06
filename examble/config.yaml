@@ -1,0 +1,25 @@
+server:
+  bind-address: "0.0.0.0:8053"
+  dns-forward: "1.1.1.1:53"
+  http-server: "0.0.0.0:8081"
+
+networks:
+  ipv4:
+    cidr: "10.199.0.0/24"
+  ipv6:
+    cidr: "fd00::/117"
+
+actions:
+  PROXY:
+    mark: "PROXY"
+    dns-forward: "1.1.1.1:53"
+    ipv4-lists:
+      - "ipv4"
+    ipv6-lists:
+      - "ipv6"
+    ipv4-run-add: "sh sh/iptables/ipv4_create_rule.sh {ipv40} {realIP} {mark}"
+    ipv4-run-delete: "sh sh/iptables/ipv4_remove_rule.sh {ipv40} {realIP} {mark}"
+    ipv4-run-reset: "sh sh/iptables/ipv4_reset_all_rules.sh {mark}"
+    ipv6-run-add: "sh sh/iptables/ipv6_create_rule.sh {ipv60} {realIP} {mark}"
+    ipv6-run-delete: "sh sh/iptables/ipv6_remove_rule.sh {ipv60} {realIP} {mark}"
+    ipv6-run-reset: "sh sh/iptables/ipv6_reset_all_rules.sh {mark}"
