@@ -88,15 +88,16 @@ func parseLine(line string) Rule {
 
 func parseRuleSet(line string) []Rule {
 	parts := strings.Split(line, ",")
-	if len(parts) < 2 {
+	if len(parts) < 3 {
 		return nil
 	}
 
 	url := parts[1]
-	return fetchRuleSet(url)
+	action := parts[2]
+	return fetchRuleSet(url, action)
 }
 
-func fetchRuleSet(url string) []Rule {
+func fetchRuleSet(url string, action string) []Rule {
 	resp, err := http.Get(url)
 	if err != nil {
 		fmt.Println("Error fetching rule set:", err)
@@ -113,8 +114,9 @@ func fetchRuleSet(url string) []Rule {
 			continue
 		}
 		rule := Rule{
-			Type: parts[0],
-			Text: parts[1],
+			Type:   parts[0],
+			Text:   parts[1],
+			Action: action,
 		}
 		// Добавляем только правила типа DOMAIN-SUFFIX и DOMAIN-KEYWORD
 		if rule.Type == "DOMAIN-SUFFIX" || rule.Type == "DOMAIN-KEYWORD" {
