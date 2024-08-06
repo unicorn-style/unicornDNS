@@ -20,7 +20,7 @@ var (
 func init() {
 	// Определяем флаги для файлов конфигурации
 	flag.StringVar(&configFile, "config", "config.yaml", "Path to the configuration file")
-	flag.StringVar(&rulesFile, "rules", "config.txt", "Path to the rules file")
+	flag.StringVar(&rulesFile, "rules", "rules.txt", "Path to the rules file")
 }
 
 func main() {
