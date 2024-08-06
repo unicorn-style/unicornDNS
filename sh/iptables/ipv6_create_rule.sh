@@ -12,7 +12,7 @@ MARK=$3
 # Добавление правил
 ip6tables -t nat -A PREROUTING -d $LOCAL_IP -j DNAT --to-destination $DESTINATION -m comment --comment "$MARK"
 ip6tables -t nat -A POSTROUTING -d $DESTINATION -j MASQUERADE -m comment --comment "$MARK"
-ip6tables -A FORWARD -d $DESTINATION -p tcp -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT -m comment --comment "$MARK"
+ip6tables -A FORWARD -d $DESTINATION -j ACCEPT -m comment --comment "$MARK"
 ip6tables -A FORWARD -s $LOCAL_IP -o ens3 -j ACCEPT -m comment --comment "$MARK"
 
 echo "Rules added successfully"

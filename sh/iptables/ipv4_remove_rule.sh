@@ -12,7 +12,7 @@ MARK=$3
 # Удаление правил
 iptables -t nat -D PREROUTING -d $LOCAL_IP -j DNAT --to-destination $DESTINATION -m comment --comment "$MARK"
 iptables -t nat -D POSTROUTING -d $DESTINATION -j MASQUERADE -m comment --comment "$MARK"
-iptables -D FORWARD -d $DESTINATION -p tcp -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT -m comment --comment "$MARK"
+iptables -D FORWARD -d $DESTINATION -j ACCEPT -m comment --comment "$MARK"
 iptables -D FORWARD -s $LOCAL_IP -o ens3 -j ACCEPT -m comment --comment "$MARK"
 
 echo "Rules removed successfully"
