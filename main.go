@@ -5,9 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
-	"time"
 
 	"github.com/miekg/dns"
 )
@@ -29,11 +27,11 @@ func main() {
 
 	// Загружаем конфигурации и правила
 	loadConfig(configFile)
-	Rules = ParseConfig(rulesFile) // Загружаем правила в срез Rules
+	ParseConfig(rulesFile) // Загружаем правила в срез Rules
 	go StartHTTPServer()
 
-	cacheChan = make(chan cacheRequest)
-
+	//cacheChan = make(chan cacheRequest)
+	go startExpiryChecker()
 	go cacheHandler()
 
 	// Обработка системных сигналов для корректного завершения работы
@@ -43,6 +41,7 @@ func main() {
 	dns.HandleFunc(".", handleDNSRequest)
 
 	server := &dns.Server{Addr: config.Server.BindAddress, Net: "udp"}
+	server.UDPSize = 1232
 	log.Printf("Starting DNS server on %s\n", config.Server.BindAddress)
 
 	go func() {
@@ -57,27 +56,9 @@ func main() {
 	log.Printf("Received signal: %s. Shutting down...", sig)
 
 	// Вызов функции очистки кэша
-	clearCache()
+	СlearCache()
 
 	// Остановка сервера
 	server.Shutdown()
 	log.Println("Server gracefully stopped")
-}
-
-func clearCache() {
-	cacheMutex.Lock()
-	defer cacheMutex.Unlock()
-	now := time.Now()
-	newCache := cache[:0] // используем срез для очистки кэша от истекших записей
-
-	for _, entry := range cache {
-		if entry.Expiry.After(now) {
-			newCache = append(newCache, entry)
-		} else {
-			trimmedEntryDomain := strings.TrimSuffix(entry.Domain, ".")
-			removeRoute(trimmedEntryDomain, entry.LocalIPs, entry.RealIP, entry.Type)
-		}
-	}
-
-	cache = newCache
 }

@@ -25,17 +25,18 @@ type Network struct {
 }
 
 type Action struct {
-	Mark       string   `yaml:"mark"`
-	DNSForward string   `yaml:"dns-forward"`
-	RewriteTTL uint32   `yaml:"ttl-rewrite"`
-	IPv4Lists  []string `yaml:"ipv4-lists"`
-	IPv6Lists  []string `yaml:"ipv6-lists"`
-	IPv4Add    string   `yaml:"ipv4-run-add"`
-	IPv4Delete string   `yaml:"ipv4-run-delete"`
-	IPv4Reset  string   `yaml:"ipv4-run-reset"`
-	IPv6Add    string   `yaml:"ipv6-run-add"`
-	IPv6Delete string   `yaml:"ipv6-run-delete"`
-	IPv6Reset  string   `yaml:"ipv6-run-reset"`
+	Mark           string   `yaml:"mark"`
+	DNSForward     string   `yaml:"dns-forward"`
+	TTLMinRewrite  uint32   `yaml:"ttl-rewrite"`
+	TTLMaxTransfer uint32   `yaml:"ttl-max-client"`
+	IPv4Lists      []string `yaml:"ipv4-lists"`
+	IPv6Lists      []string `yaml:"ipv6-lists"`
+	IPv4Add        string   `yaml:"ipv4-run-add"`
+	IPv4Delete     string   `yaml:"ipv4-run-delete"`
+	IPv4Reset      string   `yaml:"ipv4-run-reset"`
+	IPv6Add        string   `yaml:"ipv6-run-add"`
+	IPv6Delete     string   `yaml:"ipv6-run-delete"`
+	IPv6Reset      string   `yaml:"ipv6-run-reset"`
 }
 
 var (

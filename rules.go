@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 )
 
 type Rule struct {
@@ -17,26 +19,18 @@ type Rule struct {
 	DNS         string
 }
 
-/*func main() {
-	Rules := parseConfig("config.txt")
-	printRules(Rules) // Вызов функции для вывода всех правил
-
-	checkString := "shop.rutracker.org"
-	rule, matched := matchRules(checkString, Rules)
-	if matched {
-		fmt.Printf("Matched Rule: %+v\n", rule)
-	} else {
-		fmt.Println("No matching rule found.")
-	}
-}*/
-
 var Rules []Rule
 
-func ParseConfig(filename string) []Rule {
+var rulemu sync.RWMutex
+
+func ParseConfig(filename string) {
+	rulemu.Lock()
+	defer rulemu.Unlock()
+
+	Rules = []Rule{}
 	file, err := os.Open(filename)
 	if err != nil {
-		fmt.Println("Error opening file:", err)
-		return nil
+		log.Fatalf("Error opening file: %v", err)
 	}
 	defer file.Close()
 
@@ -52,7 +46,6 @@ func ParseConfig(filename string) []Rule {
 			}
 		}
 	}
-	return Rules
 }
 
 func parseLine(line string) Rule {
@@ -100,7 +93,7 @@ func parseRuleSet(line string) []Rule {
 func fetchRuleSet(url string, action string) []Rule {
 	resp, err := http.Get(url)
 	if err != nil {
-		fmt.Println("Error fetching rule set:", err)
+		log.Fatalf("Error fetching rule set: %v", err)
 		return nil
 	}
 	defer resp.Body.Close()
@@ -128,6 +121,8 @@ func fetchRuleSet(url string, action string) []Rule {
 }
 
 func MatchRules(s string, Rules []Rule) (Rule, bool) {
+	rulemu.RLock()
+	defer rulemu.RUnlock()
 	for _, rule := range Rules {
 		switch rule.Type {
 		case "DOMAIN-SUFFIX":
@@ -143,10 +138,12 @@ func MatchRules(s string, Rules []Rule) (Rule, bool) {
 	return Rule{}, false
 }
 
-func PrintRules(Rules []Rule) {
-	fmt.Println("All Rules:")
+func PrintRules(Rules []Rule) string {
+	var t string
+	t += "All Rules:\n"
 	for _, rule := range Rules {
-		fmt.Printf("Type: %s, Text: %s, Action: %s, Passthrough: %t, TTL: %d, DNS: %s\n",
-			rule.Type, rule.Text, rule.Action, rule.Passthrough, rule.TTL, rule.DNS)
+		t += fmt.Sprintf("Type: %s, Text: %s, Action: %s\n",
+			rule.Type, rule.Text, rule.Action)
 	}
+	return t
 }

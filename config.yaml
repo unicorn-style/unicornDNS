@@ -1,0 +1,34 @@
+server:
+  bind-address: "0.0.0.0:8053"
+# DNS сервер по-умолчанию:  
+  dns-forward: "1.1.1.1:53"
+# HTTP сервер имеет только 2 действия: 
+# - "/clearcache" Сброс кэша DNS с удалением правил
+# - "/reload" Перезагрузка конфигруации правил (пример правил лежит rules.txt
+  http-server: "0.0.0.0:8081"
+
+# Генерация сетей локальных откуда будут выдаваться адреса
+# ВНИМАНИЕ! на ipv6 меньше 116 диапазона слишком много адресов и он может не запуститься вообще
+# При необходимости можно указать несколько диапозонов (см config_2.yaml)
+networks:
+  ipv4:
+    cidr: "10.199.0.0/24"
+  ipv6:
+    cidr: "fd00::/117" 
+
+# Действия
+actions:
+  PROXY:
+    ttl-rewrite: 50
+    mark: "PROXY"
+    dns-forward: "1.1.1.1:53"
+    ipv4-lists:
+      - "ipv4"
+    ipv6-lists:
+      - "ipv6"
+    ipv4-run-add: ""
+    ipv4-run-delete: ""
+    ipv4-run-reset: ""
+    ipv6-run-add: ""
+    ipv6-run-delete: ""
+    ipv6-run-reset: ""
