@@ -29,7 +29,7 @@ type Action struct {
 	Mark        string            `yaml:"mark"`
 	DNSForward  string            `yaml:"dns-forward"`
 	Method      string            `yaml:"method"`
-	FakeIPDelay uint32            `yaml:"fakeip-lease-delay"`
+	FakeIPDelay uint32            `yaml:"fakeip-release-delay"`
 	Variable    map[string]string `yaml:"variable"`
 	TTL         TTL               `yaml:"ttl"`
 	FakeIPNet   []string          `yaml:"fakeip-networks"`

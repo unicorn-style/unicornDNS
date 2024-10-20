@@ -71,7 +71,12 @@ func releaseIP(ip string) {
 	defer allocatedMutex.Unlock()
 	_, ok := allocatedIPs[ip]
 	if ok {
+		log.Printf("IP %s released", ip)
 		delete(allocatedIPs, ip) // Удаляем из мапы при освобождении
+
+		for _, NetName := range allocatedIPs {
+			log.Printf("RIP %s released", NetName)
+		}
 	} else {
 		log.Printf("IP %s not found in allocated IPs", ip)
 	}

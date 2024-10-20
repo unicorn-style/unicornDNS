@@ -100,6 +100,9 @@ func handleQuestion(w dns.ResponseWriter, r *dns.Msg, msg *dns.Msg, question *dn
 					if record.Header().Ttl < config.Actions[actionName].TTL.MinRewrite {
 						sendTTL = config.Actions[actionName].TTL.MinRewrite
 					}
+					if record.Header().Ttl > config.Actions[actionName].TTL.MaxRewrite {
+						sendTTL = config.Actions[actionName].TTL.MaxRewrite
+					}
 					countAnswer++
 					switch record := record.(type) {
 					case *dns.A:
@@ -284,7 +287,9 @@ func addRoute(domain, recordType string, realIP string, ttl uint32, actionName s
 		eTime = ttl + action.FakeIPDelay
 	}
 
-	newExpiry := expireTime(eTime + action.FakeIPDelay)
+	newExpiry := expireTime(eTime)
+	//fmt.Println("ttl", eTime)
+	//fmt.Println("fakeIPDelay", action.FakeIPDelay)
 	// Check lease, if exists - update expiry
 	if mapping, exists := ipMappings[realIP]; exists {
 		if mapping.Action == actionName {
@@ -314,7 +319,7 @@ func addRoute(domain, recordType string, realIP string, ttl uint32, actionName s
 			localIPs = allocateIP(NetName, 6, ipv6Pools)
 			itype = "6"
 		}
-		ipMappings[localIPs] = &IPMapping{
+		ipMappings[realIP] = &IPMapping{
 			Domain:     domain,
 			RealIP:     realIP,
 			LocalIPs:   localIPs,
@@ -332,7 +337,7 @@ func addRoute(domain, recordType string, realIP string, ttl uint32, actionName s
 		ruleD = strings.ReplaceAll(ruleD, "{realIP}", realIP)
 		ruleD = strings.ReplaceAll(ruleD, fmt.Sprintf("{fakeIP_%v}", NetName), localIPs)
 		ruleD = strings.ReplaceAll(ruleD, "{inet}", itype)
-		ipMappings[localIPs].CmdDelete = ruleD
+		ipMappings[realIP].CmdDelete = ruleD
 		log.Println("ADD:", rule)
 		//log.Println("DEL:", ruleD)
 
@@ -347,7 +352,7 @@ func removeRoute(ip string) {
 	if ok {
 		log.Printf("Expired IP-local {%v} was released [%v - %v]", ip, ipMappings[ip].Domain, ipMappings[ip].RealIP)
 		exec.Command("sh", "-c", ipMappings[ip].CmdDelete).Run()
-		releaseIP(ip)
+		releaseIP(ipMappings[ip].LocalIPs)
 	}
 }
 func forwardDNSRequest(r *dns.Msg, dnsForward string, dnssec bool) ([]dns.RR, []dns.RR, []dns.RR) {
@@ -411,9 +416,9 @@ func startExpiryChecker() {
 		mu.Lock()
 		for ip, mapping := range ipMappings {
 			if now.After(mapping.Expiry) {
-				log.Printf("Expired mapping for IP: %s -> %s [%s]", ip, mapping.LocalIPs, mapping.Action)
-				removeRoute(mapping.LocalIPs)
-				delete(ipMappings, mapping.LocalIPs)
+				log.Printf("EC Expired mapping for IP: %s -> %s [%s]", ip, mapping.LocalIPs, mapping.Action)
+				removeRoute(mapping.RealIP)
+				delete(ipMappings, mapping.RealIP)
 				//delete(allocatedIPs, mapping.LocalIPs[0])
 			}
 		}
