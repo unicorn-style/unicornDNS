@@ -24,7 +24,7 @@ case "$ARCH" in
 esac
 
 # DOWNLOAD_URL="https://github.com/unicorn-style/unicornDNS/releases/latest/download/unicornDNS-$ARCH.tar.gz"
-DOWNLOAD_URL="https://raw.githubusercontent.com/unicorn-style/unicornDNS/main/build/unicornDNS.tar.gz"
+DOWNLOAD_URL="https://raw.githubusercontent.com/unicorn-style/unicornDNS/main/build/unicornDNS_$ARCH.tar.gz"
 # Получение интерфейсов
 INTERFACES=$(ip -o link show | awk -F': ' '{print $2}')
 i=1
@@ -209,8 +209,8 @@ unset INSTALLTYPE
 
 # Скачивание и распаковка сборки в зависимости от архитектуры
 curl -o "$INSTALL_DIR/unicornDNS.tar.gz" "$DOWNLOAD_URL"
-mkdir $INSTALL_DIR/unicornDNS
-tar -xzf "$INSTALL_DIR/unicornDNS.tar.gz" -C "$INSTALL_DIR/unicornDNS"
+mkdir $INSTALL_DIR
+tar -xzf "$INSTALL_DIR/unicornDNS.tar.gz" -C "$INSTALL_DIR"
 rm "$INSTALL_DIR/unicornDNS.tar.gz"
 
 # Скачивание скриптов
@@ -256,6 +256,6 @@ echo "UnicornDNS successfully installed at $INSTALLPATH"
 echo " – Config file: $INSTALLPATH/config.yaml"
 echo " – Rules file: $INSTALLPATH/rules.list"
 echo "\n\nUse these commands to controll"
-echo "\"http://$HTTP_BINDADDRESS/reset\" - reset firewall and cache"
-echo "\"http://$HTTP_BINDADDRESS/clearcache\" - flush DNS-cache server"
-echo "\"http://$HTTP_BINDADDRESS/reload\" - reload rule list"
+echo "http://$HTTP_BINDADDRESS/reset - reset firewall and cache"
+echo "http://$HTTP_BINDADDRESS/clearcache - flush DNS-cache server"
+echo "http://$HTTP_BINDADDRESS/reload - reload rule list"
