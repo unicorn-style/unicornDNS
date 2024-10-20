@@ -106,6 +106,7 @@ read HTTP_BINDADDRESS_INPUT
 HTTP_BINDADDRESS=${HTTP_BINDADDRESS_INPUT:-$HTTP_BINDADDRESS}
 
 # Проверка наличия nftables и выбор механизма firewall
+: <<'COMMENT'
 if command -v nft > /dev/null 2>&1; then
   echo "Select firewall mechanism:"
   echo "1. iptables"
@@ -141,6 +142,7 @@ else
   echo "nftables not found. Use default iptables."
   FIREWALL_TYPE="iptables"
 fi
+COMMENT
 
 # Выбор пути установки
 echo "Would you like to change the installation directory (default: $INSTALLPATH)? [Y/N]:"
@@ -228,7 +230,7 @@ Description=UnicornDNS Service
 After=network.target
 
 [Service]
-ExecStart=$INSTALL_DIR/unicornDNS -rules $INSTALL_DIR/rules.txt
+ExecStart=$INSTALL_DIR/unicornDNS -rules $INSTALL_DIR/rules.txt -config $INSTALL_DIR/config.yaml
 WorkingDirectory=$INSTALL_DIR
 Restart=on-failure
 
@@ -249,7 +251,7 @@ echo " – Rules file: $INSTALLPATH/rules.list"
 echo "Use these commands to controll"
 echo " – http://$HTTP_BINDADDRESS/reset - reset firewall and cache"
 echo " – http://$HTTP_BINDADDRESS/clearcache - flush DNS-cache server"
-echo " – http://$HTTP_BINDADDRESS/reload - reload rule list
+echo " – http://$HTTP_BINDADDRESS/reload - reload rule list"
 
 unset BIND_ADDRESS
 unset DNS_FORWARD
