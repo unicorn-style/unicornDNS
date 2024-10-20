@@ -11,11 +11,11 @@ networks:
 actions:
   PROXY:
     method: "fakeip"
-    fakeip-release-delay: "600"
+    fakeip-release-delay: 600
     ttl:
-      max-transfer: "120"
-      min_rewrite: "100"
-      max_rewrite: "300"
+      max-transfer: 120
+      min_rewrite: 100
+      max_rewrite: 300
     dns-forward: "$DNS_FORWARD"
     variable:
       wan: "$IFACE"
