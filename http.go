@@ -28,7 +28,7 @@ func clearCacheHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func reloadHandler(w http.ResponseWriter, r *http.Request) {
-	ParseConfig(rulesFile)
+	ParseRuleset(rulesFile)
 	fmt.Fprintln(w, "Rules reloaded successfully")
 }
 

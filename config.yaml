@@ -6,29 +6,47 @@ server:
 # - "/clearcache" Сброс кэша DNS с удалением правил
 # - "/reload" Перезагрузка конфигруации правил (пример правил лежит rules.txt
   http-server: "0.0.0.0:8081"
-
+  cache: true
 # Генерация сетей локальных откуда будут выдаваться адреса
 # ВНИМАНИЕ! на ipv6 меньше 116 диапазона слишком много адресов и он может не запуститься вообще
 # При необходимости можно указать несколько диапозонов (см config_2.yaml)
 networks:
-  ipv4:
-    cidr: "10.199.0.0/24"
-  ipv6:
-    cidr: "fd00::/117" 
+  private:
+    ipv4: "10.199.0.0/16"
+    ipv6: "fd00::/117" 
 
 # Действия
 actions:
   PROXY:
-    ttl-rewrite: 50
-    mark: "PROXY"
+    method: "fakeip"
+    # method fakeip или passthrought
+    fakeip-release-delay: 30
+    # fakeip-release-delay опция доступна только при методе fakeip
+    # задержка в секундах после которого выданный ip-адрес осовобождается
+    # опция позволяет исправить проблему при некоторых сценариях использования
     dns-forward: "1.1.1.1:53"
-    ipv4-lists:
-      - "ipv4"
-    ipv6-lists:
-      - "ipv6"
-    ipv4-run-add: ""
-    ipv4-run-delete: ""
-    ipv4-run-reset: ""
-    ipv6-run-add: ""
-    ipv6-run-delete: ""
-    ipv6-run-reset: ""
+    ttl:
+      max-transfer: 30
+      # Максимальное время которые пересылается от серверу к клиенту
+      # Никак не влияет на запись которая хранится в cache сервере
+      min-rewrite: 30
+      # Если TTL записи ниже чем это значение, оно меняется на данное.
+      max-rewrite: 40
+      # Если TTL записи ВЫШЕ чем это значение, оно меняется на данное.
+    variable: # Variables uses for replace in script strings
+      wan: "ens3" # replace {wan}
+      mark: "PROXY" # replace {mark}
+      tname: "dnsnat" # ... {tablename}
+      nets: "ipv4ipv6"
+    fakeip-networks:
+      - "private"
+    script:
+      add: "sh sh/iptables/add.sh {fakeIP_private} {realIP} {mark} {wan}"
+      delete: "sh sh/iptables/delete.sh {fakeIP_private} {realIP} {mark} {wan}"
+      onreset: "sh sh/iptables/onreset.sh {nets}"
+      onstart: ""
+      # availible types script: add, delete, onreset, onstart
+      # constants: 
+      # {inet} = 4 or 6
+      # {realIP} = real ip
+      # {fakeIP_x} = where x == num of IP from list. 0,1

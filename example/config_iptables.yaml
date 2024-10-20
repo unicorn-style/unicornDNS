@@ -1,0 +1,48 @@
+server:
+  bind-address: "0.0.0.0:8053"
+# DNS сервер по-умолчанию:  
+  dns-forward: "1.1.1.1:53"
+# HTTP сервер имеет только 2 действия: 
+# - "/clearcache" Сброс кэша DNS с удалением правил
+# - "/reload" Перезагрузка конфигруации правил (пример правил лежит rules.txt
+  http-server: "0.0.0.0:8081"
+  cache: true
+# Генерация сетей локальных откуда будут выдаваться адреса
+# ВНИМАНИЕ! на ipv6 меньше 116 диапазона слишком много адресов и он может не запуститься вообще
+# При необходимости можно указать несколько диапозонов (см config_2.yaml)
+networks:
+  private:
+    ipv4: "10.199.0.0/16"
+    ipv6: "fd00::/117" 
+
+# Действия
+actions:
+  PROXY:
+    method: "fakeip"
+    # method fakeip или passthrought
+    fakeip-release-delay: 600
+    # fakeip-release-delay опция доступна только при методе fakeip
+    # задержка в секундах после которого выданный ip-адрес осовобождается
+    # опция позволяет исправить проблему при некоторых сценариях использования
+    dns-forward: "1.1.1.1:53"
+    ttl:
+      max-transfer: 120
+      # Максимальное время которые пересылается от серверу к клиенту
+      # Никак не влияет на запись которая хранится в cache сервере
+      min-rewrite: 120
+      # Если TTL записи ниже чем это значение, оно меняется на данное.
+      max-rewrite: 600
+      # Если TTL записи ВЫШЕ чем это значение, оно меняется на данное.
+    variable:
+      # Тут можно указать переменные в формате имя: значение
+      # Текст в любой команде меняется по маске {имя} в командах
+      interface: "ens3"
+      mark: "PROXY"
+    fakeip-networks:
+      - "private"
+      # название взято из раздела networks.[название списка]
+      # в строке скрипта меняется на значение которое выдано dns-сервером из пула адресов {fakeIP_private}
+  script:
+      add: "sh sh/iptables/add.sh {fakeIP_private} {realIP} {mark} {wan} {tname}"
+      delete: "sh sh/iptables/delete.sh {fakeIP_private} {realIP} {mark} {wan} {tname}"
+      onreset: "sh sh/iptables/onreset.sh {nets}"

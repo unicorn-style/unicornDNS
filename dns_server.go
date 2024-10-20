@@ -11,23 +11,13 @@ import (
 	"github.com/miekg/dns"
 )
 
-type IPEntry struct {
-	IP    string
-	InUse bool
-}
-
-type IPMapping struct {
-	Domain     string
-	RealIP     string
-	LocalIPs   []string
-	Action     string
-	Expiry     time.Time
-	RecordType string
-}
-
-var ipMappings = make(map[string]*IPMapping)
 var mu sync.Mutex
 
+func expireTime(i uint32) time.Time {
+	return time.Now().Add(time.Duration(i) * time.Second)
+}
+
+// Input DNS Request
 func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	msg := dns.Msg{}
 	msg.SetReply(r)
@@ -43,7 +33,7 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 			}
 		}
 	}
-	// Проверяем, поддерживает ли клиент DNSSEC
+	// Check DNSSEC & Recursion
 	if r.RecursionDesired {
 		msg.RecursionAvailable = true
 	}
@@ -97,42 +87,47 @@ func handleQuestion(w dns.ResponseWriter, r *dns.Msg, msg *dns.Msg, question *dn
 				cDNS = config.Server.DNSForward
 			}
 			log.Printf("Match: %s, DNS: %s [%s]\n", rule.Type, cDNS, actionName)
-			records, ns, extra := forwardDNSRequest(r, config.Server.DNSForward, dnssec)
+			records, ns, extra := forwardDNSRequest(r, cDNS, dnssec)
 			msg.Ns = append(msg.Ns, ns...)
 			msg.Extra = append(msg.Extra, extra...)
+			if config.Actions[actionName].Method == "fakeip" {
+				var countAnswer uint32 = 0
+				//var Newttl uint32
+				for _, record := range records {
+					//ttl constructor
+					sendTTL := record.Header().Ttl
+					//ttl.min-rewrite
+					if record.Header().Ttl < config.Actions[actionName].TTL.MinRewrite {
+						sendTTL = config.Actions[actionName].TTL.MinRewrite
+					}
+					countAnswer++
+					switch record := record.(type) {
+					case *dns.A:
+						prepareCache = append(prepareCache, handleARecord(record.Header().Name, record.A.String(), sendTTL, actionName, msg))
+					case *dns.AAAA:
+						prepareCache = append(prepareCache, handleAAAARecord(record.Header().Name, record.AAAA.String(), sendTTL, actionName, msg))
+					case *dns.CNAME:
+						prepareCache = append(prepareCache, handleCNAMERecord(record.Header().Name, record.Target, sendTTL, msg))
+					default:
+						log.Printf("RULE DNS: %s, DNS: %s [%s]\n", record.String(), cDNS, actionName)
+						// Add original line to msg.Answer
+						msg.Answer = append(msg.Answer, record)
+						var Line []dns.RR
+						Line = append(Line, record)
 
-			var countAnswer uint32 = 0
-			//var Newttl uint32
-			for _, record := range records {
-				if record.Header().Ttl < config.Actions[actionName].TTLMinRewrite {
-					record.Header().Ttl = config.Actions[actionName].TTLMinRewrite
-					//newttl = record.Header().Ttl
+						// Добавляем в кеш оригинальную запись
+						prepareCache = append(prepareCache, CacheEntry{
+							Domain:       domain,
+							Type:         record.Header().Rrtype,
+							AllocatedIPs: "",
+							Expiry:       expireTime(sendTTL),
+							Msg:          Line,
+						})
+					}
+
 				}
-				countAnswer++
-				switch record := record.(type) {
-				case *dns.A:
-					prepareCache = append(prepareCache, handleARecord(record.Header().Name, record.A.String(), record.Header().Ttl, actionName, msg))
-				case *dns.AAAA:
-					prepareCache = append(prepareCache, handleAAAARecord(record.Header().Name, record.AAAA.String(), record.Header().Ttl, actionName, msg))
-				case *dns.CNAME:
-					prepareCache = append(prepareCache, handleCNAMERecord(record.Header().Name, record.Target, record.Header().Ttl, msg))
-				default:
-					log.Printf("RULE DNS: %s, DNS: %s [%s]\n", record.String(), cDNS, actionName)
-					// Добавляем оригинальную запись в msg.Answer
-					msg.Answer = append(msg.Answer, record)
-					var Line []dns.RR
-					Line = append(Line, record)
-
-					// Добавляем в кеш оригинальную запись
-					prepareCache = append(prepareCache, CacheEntry{
-						Domain:       domain,
-						Type:         record.Header().Rrtype,
-						AllocatedIPs: nil,
-						Expiry:       time.Now().Add(time.Duration(record.Header().Ttl) * time.Second),
-						Msg:          Line,
-					})
-				}
-
+			} else {
+				ForwardAndRespond(w, r, msg, cDNS)
 			}
 		} else {
 			ForwardAndRespond(w, r, msg, config.Server.DNSForward)
@@ -159,8 +154,8 @@ func handleQuestion(w dns.ResponseWriter, r *dns.Msg, msg *dns.Msg, question *dn
 				prepareCache = append(prepareCache, CacheEntry{
 					Domain:       domain,
 					Type:         record.Header().Rrtype, // Устанавливаем тип записи
-					AllocatedIPs: nil,                    // Для не A/AAAA записей AllocatedIPs не нужны
-					Expiry:       time.Now().Add(time.Duration(record.Header().Ttl) * time.Second),
+					AllocatedIPs: "",                     // Для не A/AAAA записей AllocatedIPs не нужны
+					Expiry:       expireTime(record.Header().Ttl),
 					Msg:          Line,
 				})
 			}
@@ -172,25 +167,29 @@ func handleQuestion(w dns.ResponseWriter, r *dns.Msg, msg *dns.Msg, question *dn
 	w.WriteMsg(msg)
 }
 
+// Handlers record
 func handleARecord(name, ip string, ttl uint32, actionName string, msg *dns.Msg) CacheEntry {
 	log.Printf("Handling A record for %s\n", name)
 	_, ok := config.Actions[actionName]
 	if actionName != "" && ok {
-		allocatedIPs := allocateIPs(config.Actions[actionName].IPv4Lists, ipv4Pools)
+		allocatedIPs := addRoute(name, "A", ip, ttl, actionName)
 		if len(allocatedIPs) > 0 {
 			//log.Printf("ADDROUTE: %s - %s\n", allocatedIPs, ip)
-			allocatedIPs = addRoute(name, "A", allocatedIPs, ip, ttl, actionName)
 			var Line []dns.RR
-			Line = append(Line, createARecord(name, allocatedIPs[0], ttl))
+			//ttl.max-transfare
+			sendTTL := ttl
+			if ttl > config.Actions[actionName].TTL.MaxTrasfer {
+				sendTTL = config.Actions[actionName].TTL.MaxTrasfer
+			}
+			Line = append(Line, createARecord(name, allocatedIPs, sendTTL))
 			msg.Answer = append(msg.Answer, Line...)
-			expiry := time.Now().Add(time.Duration(ttl) * time.Second) // Вычисляем время конца
 			prepareCache := CacheEntry{
 				Action:       actionName,
 				Domain:       name,
 				Type:         dns.TypeA,
 				RealIP:       ip,
 				AllocatedIPs: allocatedIPs,
-				Expiry:       expiry,
+				Expiry:       expireTime(ttl),
 				Msg:          Line,
 			}
 			return prepareCache
@@ -208,21 +207,26 @@ func handleAAAARecord(name, ip string, ttl uint32, actionName string, msg *dns.M
 	log.Printf("Handling AAAA record for %s\n", name)
 	_, ok := config.Actions[actionName]
 	if actionName != "" && ok {
-		allocatedIPs := allocateIPs(config.Actions[actionName].IPv6Lists, ipv6Pools)
+		allocatedIPs := addRoute(name, "AAAA", ip, ttl, actionName)
 		if len(allocatedIPs) > 0 {
 			//log.Printf("ADDROUTE: %s - %s\n", allocatedIPs, ip)
-			allocatedIPs = addRoute(name, "AAAA", allocatedIPs, ip, ttl, actionName)
+
 			var Line []dns.RR
-			Line = append(Line, createAAAARecord(name, allocatedIPs[0], ttl))
+			//Line = append(Line, createAAAARecord(name, allocatedIPs[0], ttl))
+			//ttl.max-transfare
+			sendTTL := ttl
+			if ttl > config.Actions[actionName].TTL.MaxTrasfer {
+				sendTTL = config.Actions[actionName].TTL.MaxTrasfer
+			}
+			Line = append(Line, createAAAARecord(name, allocatedIPs, sendTTL))
 			msg.Answer = append(msg.Answer, Line...)
-			expiry := time.Now().Add(time.Duration(ttl) * time.Second) // Вычисляем время конца
 			prepareCache := CacheEntry{
 				Action:       actionName,
 				Domain:       name,
 				Type:         dns.TypeAAAA,
 				RealIP:       ip,
 				AllocatedIPs: allocatedIPs,
-				Expiry:       expiry,
+				Expiry:       expireTime(ttl),
 				Msg:          Line,
 			}
 			return prepareCache
@@ -236,18 +240,16 @@ func handleAAAARecord(name, ip string, ttl uint32, actionName string, msg *dns.M
 }
 
 func handleCNAMERecord(name, target string, ttl uint32, msg *dns.Msg) CacheEntry {
-	//log.Printf("Handling CNAME record for %s\n", name)
-
 	var Line []dns.RR
 	Line = append(Line, createCNAMERecord(name, target, ttl))
 	msg.Answer = append(msg.Answer, Line...)
 	//msg.Answer = append(msg.Answer, createCNAMERecord(name, target, ttl))
-	expiry := time.Now().Add(time.Duration(ttl) * time.Second) // Вычисляем время конца
+	//expiry := time.Now().Add(time.Duration(ttl) * time.Second) // Вычисляем время конца
 	prepareCache := CacheEntry{
 		Domain: name,
 		Type:   dns.TypeCNAME,
 		RealIP: target,
-		Expiry: expiry,
+		Expiry: expireTime(ttl),
 		Msg:    Line,
 	}
 	return prepareCache
@@ -268,21 +270,24 @@ func createCNAMERecord(name, target string, ttl uint32) dns.RR {
 	return rr
 }
 
-// Action CREATE
-func addRoute(domain, recordType string, localIPs []string, realIP string, ttl uint32, actionName string) []string {
-	log.Printf("Adding rule for %s of type %s with local IPs %v and real IP %s and TTL %d\n", domain, recordType, localIPs, realIP, ttl)
+// Exec Add Rule
+func addRoute(domain, recordType string, realIP string, ttl uint32, actionName string) string {
+	log.Printf("Adding rule for %s of type %s real IP %s and TTL %d\n", domain, recordType, realIP, ttl)
 
 	action, ok := config.Actions[actionName]
 	if !ok {
 		log.Printf("No action found for %s", actionName)
-		return nil
+		return ""
+	}
+	eTime := ttl
+	if action.FakeIPDelay != 0 {
+		eTime = ttl + action.FakeIPDelay
 	}
 
-	// Проверяем, существует ли уже запись для данного RealIP
+	newExpiry := expireTime(eTime + action.FakeIPDelay)
+	// Check lease, if exists - update expiry
 	if mapping, exists := ipMappings[realIP]; exists {
 		if mapping.Action == actionName {
-			newExpiry := time.Now().Add(time.Duration(ttl) * time.Second)
-
 			// Если новое правило имеет большее TTL, обновляем его
 			if newExpiry.After(mapping.Expiry) {
 				mu.Lock()
@@ -291,94 +296,51 @@ func addRoute(domain, recordType string, localIPs []string, realIP string, ttl u
 				log.Printf("[1]New TTL for %s -> %v", mapping.RealIP, mapping.LocalIPs)
 				log.Printf("Checked TTL")
 			}
-			for _, ip := range localIPs {
-				rtype := dns.TypeAAAA
-				if recordType == "A" {
-					rtype = dns.TypeA
-				}
-				releaseIP(ip, rtype)
-				log.Printf("REALIZING %v %v", ip, recordType)
-			}
 			return mapping.LocalIPs
 		}
 	}
-
-	// Добавляем новое сопоставление
-	expiry := time.Now().Add(time.Duration(ttl) * time.Second)
-	ipMappings[realIP] = &IPMapping{
-		Domain:     domain,
-		RealIP:     realIP,
-		LocalIPs:   localIPs,
-		Expiry:     expiry,
-		Action:     actionName,
-		RecordType: recordType,
-	}
-
-	var rule string
-	if recordType == "A" {
-		rule = action.IPv4Add
-		for i, ip := range localIPs {
-			rule = strings.ReplaceAll(rule, fmt.Sprintf("{ipv4%d}", i), ip)
+	var localIPs string
+	var rule, ruleD string
+	rule = action.Script.Add
+	//log.Println("ADD:", rule)
+	ruleD = action.Script.Delete
+	for _, NetName := range action.FakeIPNet {
+		if recordType == "A" {
+			localIPs = allocateIP(NetName, 4, ipv4Pools)
 		}
-		rule = strings.ReplaceAll(rule, "{realIP}", realIP)
-		rule = strings.ReplaceAll(rule, "{mark}", action.Mark)
-	} else {
-		rule = action.IPv6Add
-		for i, ip := range localIPs {
-			rule = strings.ReplaceAll(rule, fmt.Sprintf("{ipv6%d}", i), ip)
+		if recordType == "AAAA" {
+			localIPs = allocateIP(NetName, 6, ipv6Pools)
 		}
-		rule = strings.ReplaceAll(rule, "{realIP}", realIP)
-		rule = strings.ReplaceAll(rule, "{mark}", action.Mark)
-	}
+		ipMappings[localIPs] = &IPMapping{
+			Domain:     domain,
+			RealIP:     realIP,
+			LocalIPs:   localIPs,
+			Expiry:     newExpiry,
+			Action:     actionName,
+			RecordType: recordType,
+		}
 
-	exec.Command("sh", "-c", rule).Run()
+		// Добавляем новое сопоставление
+
+		rule = strings.ReplaceAll(rule, fmt.Sprintf("{fakeIP_%v}", NetName), localIPs)
+		ruleD = strings.ReplaceAll(ruleD, fmt.Sprintf("{fakeIP_%v}", NetName), localIPs)
+		rule = strings.ReplaceAll(rule, "{realIP}", realIP)
+		ruleD = strings.ReplaceAll(ruleD, "{realIP}", realIP)
+		ipMappings[localIPs].CmdDelete = ruleD
+		//log.Println("ADD:", rule)
+		//log.Println("DEL:", ruleD)
+		exec.Command("sh", "-c", rule).Run()
+	}
 	return localIPs
 }
 
-// Action REMOVE
-func removeRoute(entries []CacheEntry) {
-	for _, entry := range entries {
-		domain := entry.Domain
-		realIP := entry.RealIP
-		recordType := entry.Type
-		localIPs := entry.AllocatedIPs
-		actionString := entry.Action
-
-		action, ok := config.Actions[actionString]
-		if ok {
-			log.Printf("Delete rule for %s [%v] %v", domain, actionString, localIPs)
-			//fmt.Printf("action.IPv4Add: %v\n", action.IPv4Add[0])
-			var rule string
-
-			if recordType == dns.TypeA {
-				rule = action.IPv4Delete
-				for i, ip := range localIPs {
-					rule = strings.ReplaceAll(rule, fmt.Sprintf("{ipv4%d}", i), ip)
-				}
-				rule = strings.ReplaceAll(rule, "{realIP}", realIP)
-				rule = strings.ReplaceAll(rule, "{mark}", action.Mark)
-				rule = strings.ReplaceAll(rule, "{domain}", domain)
-			} else {
-				rule = action.IPv6Delete
-				for i, ip := range localIPs {
-					rule = strings.ReplaceAll(rule, fmt.Sprintf("{ipv6%d}", i), ip)
-				}
-				rule = strings.ReplaceAll(rule, "{realIP}", realIP)
-				rule = strings.ReplaceAll(rule, "{mark}", action.Mark)
-				rule = strings.ReplaceAll(rule, "{domain}", domain)
-			}
-
-			log.Printf("SH SCRIPT [%v]", rule)
-			cmd := exec.Command("sh", "-c", rule).Run()
-			log.Printf("RESULT [%v]", cmd)
-
-			for _, ip := range localIPs {
-				releaseIP(ip, recordType)
-				log.Printf("REALIZE %v %v", ip, recordType)
-			}
-		} /* else {
-			log.Printf("removeRoute, No action found for [domain: %v] D: %v -> %v\n", domain, realIP, localIPs)
-		} */
+// Exec Remove Rule
+func removeRoute(ip string) {
+	_, ok := ipMappings[ip]
+	if ok {
+		log.Printf("Expired IP-local {%v} was released [%v - %v]", ip, ipMappings[ip].Domain, ipMappings[ip].RealIP)
+		exec.Command("sh", "-c", ipMappings[ip].CmdDelete).Run()
+		releaseIP(ip)
 	}
 }
 func forwardDNSRequest(r *dns.Msg, dnsForward string, dnssec bool) ([]dns.RR, []dns.RR, []dns.RR) {
@@ -387,7 +349,7 @@ func forwardDNSRequest(r *dns.Msg, dnsForward string, dnssec bool) ([]dns.RR, []
 	client.DialTimeout = time.Second * 2
 	client.ReadTimeout = time.Second * 2
 
-	// Клонируем оригинальный запрос
+	// Dublicate
 	req := r.Copy()
 
 	// Если требуется, можно изменить параметры, например, установить размер EDNS0
@@ -397,7 +359,7 @@ func forwardDNSRequest(r *dns.Msg, dnsForward string, dnssec bool) ([]dns.RR, []
 		req.SetEdns0(1232, dnssec)
 	}
 
-	// Выполняем запрос к форвардному DNS-серверу
+	// forward to DNS-Server
 	response, _, err := client.Exchange(req, dnsForward)
 	if err != nil {
 		log.Printf("Failed to forward DNS request: %s\n", err)
@@ -413,10 +375,10 @@ func forwardDNSRequest(r *dns.Msg, dnsForward string, dnssec bool) ([]dns.RR, []
 // Passthrought DNS query
 func ForwardAndRespond(w dns.ResponseWriter, r *dns.Msg, msg *dns.Msg, dnsForward string) {
 	client := new(dns.Client)
-	client.UDPSize = 1232 // увеличенный размер UDP для DNSSEC
+	client.UDPSize = 1232 //  UDP for DNSSEC
 	client.DialTimeout = time.Second * 2
 	client.ReadTimeout = time.Second * 2
-	//client.UDPSize = 1232 // увеличенный размер UDP для DNSSEC
+
 	log.Printf("Passthrough: %s, DNS: %s\n", &r.Question[0], config.Server.DNSForward)
 	req := r.Copy()
 
@@ -442,15 +404,46 @@ func startExpiryChecker() {
 		mu.Lock()
 		for ip, mapping := range ipMappings {
 			if now.After(mapping.Expiry) {
-				rtype := dns.TypeAAAA
-				if mapping.RecordType == "A" {
-					rtype = dns.TypeA
-				}
-				removeRoute([]CacheEntry{{Domain: mapping.Domain, RealIP: ip, AllocatedIPs: mapping.LocalIPs, Action: mapping.Action, Type: rtype}})
-				delete(ipMappings, ip)
-				log.Printf("Expired mapping removed for IP: %s -> %s [%s]", ip, mapping.LocalIPs, mapping.Action)
+				log.Printf("Expired mapping for IP: %s -> %s [%s]", ip, mapping.LocalIPs, mapping.Action)
+				removeRoute(mapping.LocalIPs)
+				delete(ipMappings, mapping.LocalIPs)
+				//delete(allocatedIPs, mapping.LocalIPs[0])
 			}
 		}
 		mu.Unlock()
+	}
+}
+
+// Run reset script by name
+func ScriptOnReset(actionString string) {
+	action, ok := config.Actions[actionString]
+	var cmd error
+	if ok {
+		if len(action.Script.OnReset) > 0 {
+			log.Printf("SH RUN SCRIPT ACTION (OnReset) [%v]", action.Script.OnReset)
+			cmd = exec.Command("sh", "-c", action.Script.OnReset).Run()
+			log.Printf("RESULT [%v]", cmd)
+		}
+	}
+}
+
+func ScriptOnStart(actionString string) {
+	action, ok := config.Actions[actionString]
+	var cmd error
+	if ok {
+		if len(action.Script.OnStart) > 0 {
+			log.Printf("SH RUN SCRIPT ACTION (OnStart) [%v]", action.Script.OnStart)
+			cmd = exec.Command("sh", "-c", action.Script.OnStart).Run()
+			log.Printf("RESULT [%v]", cmd)
+		}
+	}
+}
+
+func ScriptResetAll() {
+	for _, action := range config.Actions {
+		if len(action.Script.OnReset) > 0 {
+			log.Printf("SH RUN SCRIPT ACTION (OnReset) [%v]", action.Script.OnReset)
+			exec.Command("sh", "-c", action.Script.OnReset).Run()
+		}
 	}
 }

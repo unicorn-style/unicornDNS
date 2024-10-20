@@ -6,9 +6,26 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
+
+// Структура для каждого атомарного счетчика
+type AtomicCounter struct {
+	value int64
+}
+
+// Increment увеличивает значение счетчика
+func (c *AtomicCounter) Increment() {
+	atomic.AddInt64(&c.value, 1)
+}
+
+// Get возвращает текущее значение счетчика
+func (c *AtomicCounter) Get() int64 {
+	return atomic.LoadInt64(&c.value)
+}
 
 type Rule struct {
 	Type        string
@@ -17,13 +34,21 @@ type Rule struct {
 	TTL         int32
 	Action      string
 	DNS         string
+	Counter     *AtomicCounter
 }
 
 var Rules []Rule
 
+// Глобальный массив общие счетчики
+var Cnt = map[string]*AtomicCounter{
+	"RulesAll":    {},
+	"RulesActive": {},
+	"AllRequest":  {},
+}
+
 var rulemu sync.RWMutex
 
-func ParseConfig(filename string) {
+func ParseRuleset(filename string) {
 	rulemu.Lock()
 	defer rulemu.Unlock()
 
@@ -42,6 +67,7 @@ func ParseConfig(filename string) {
 		} else {
 			rule := parseLine(line)
 			if rule != (Rule{}) {
+				Cnt["RulesActive"].Increment()
 				Rules = append(Rules, rule)
 			}
 		}
@@ -54,31 +80,38 @@ func parseLine(line string) Rule {
 		return Rule{}
 	}
 
-	rule := Rule{
-		Type:   parts[0],
-		Text:   parts[1],
-		Action: parts[2],
-	}
-
-	// Обработка дополнительных аргументов
-	for _, part := range parts[3:] {
-		if part == "passthrought" {
-			rule.Passthrough = true
-		} else if strings.HasPrefix(part, "ttl=") {
-			fmt.Sscanf(part, "ttl=%d", &rule.TTL)
-		} else if strings.HasPrefix(part, "dns=") {
-			rule.DNS = strings.TrimPrefix(part, "dns=")
+	_, ok := config.Actions[parts[2]]
+	Cnt["RulesAll"].Increment()
+	if ok {
+		rule := Rule{
+			Type:    parts[0],
+			Text:    parts[1],
+			Action:  parts[2],
+			Counter: &AtomicCounter{},
 		}
-	}
 
-	// Добавляем только правила типа DOMAIN-SUFFIX и DOMAIN-KEYWORD
-	if rule.Type == "DOMAIN-SUFFIX" || rule.Type == "DOMAIN-KEYWORD" {
-		return rule
+		// Options
+		for _, part := range parts[3:] {
+			if part == "passthrought" {
+				rule.Passthrough = true
+			} else if strings.HasPrefix(part, "ttl=") {
+				fmt.Sscanf(part, "ttl=%d", &rule.TTL)
+			} else if strings.HasPrefix(part, "dns=") {
+				rule.DNS = strings.TrimPrefix(part, "dns=")
+			}
+		}
+
+		//
+		if rule.Type == "DOMAIN-SUFFIX" || rule.Type == "DOMAIN-KEYWORD" || rule.Type == "DOMAIN" {
+			//Cnt["RulesActive"].Increment()
+			return rule
+		}
 	}
 
 	return Rule{}
 }
 
+// Parcing URL-data
 func parseRuleSet(line string) []Rule {
 	parts := strings.Split(line, ",")
 	if len(parts) < 3 {
@@ -106,14 +139,20 @@ func fetchRuleSet(url string, action string) []Rule {
 		if len(parts) < 2 {
 			continue
 		}
-		rule := Rule{
-			Type:   parts[0],
-			Text:   parts[1],
-			Action: action,
-		}
-		// Добавляем только правила типа DOMAIN-SUFFIX и DOMAIN-KEYWORD
-		if rule.Type == "DOMAIN-SUFFIX" || rule.Type == "DOMAIN-KEYWORD" {
-			Rules = append(Rules, rule)
+		Cnt["RulesAll"].Increment()
+		_, ok := config.Actions[action]
+		if ok {
+			rule := Rule{
+				Type:    parts[0],
+				Text:    parts[1],
+				Action:  action,
+				Counter: &AtomicCounter{},
+			}
+			// Добавляем только правила типа DOMAIN-SUFFIX и DOMAIN-KEYWORD
+			if rule.Type == "DOMAIN-SUFFIX" || rule.Type == "DOMAIN-KEYWORD" || rule.Type == "DOMAIN" {
+				Cnt["RulesActive"].Increment()
+				Rules = append(Rules, rule)
+			}
 		}
 	}
 
@@ -127,10 +166,17 @@ func MatchRules(s string, Rules []Rule) (Rule, bool) {
 		switch rule.Type {
 		case "DOMAIN-SUFFIX":
 			if strings.HasSuffix(s, rule.Text) {
+				rule.Counter.Increment()
 				return rule, true
 			}
 		case "DOMAIN-KEYWORD":
 			if strings.Contains(s, rule.Text) {
+				rule.Counter.Increment()
+				return rule, true
+			}
+		case "DOMAIN":
+			if s == rule.Text {
+				rule.Counter.Increment()
 				return rule, true
 			}
 		}
@@ -141,9 +187,11 @@ func MatchRules(s string, Rules []Rule) (Rule, bool) {
 func PrintRules(Rules []Rule) string {
 	var t string
 	t += "All Rules:\n"
+	i := 0
 	for _, rule := range Rules {
-		t += fmt.Sprintf("Type: %s, Text: %s, Action: %s\n",
-			rule.Type, rule.Text, rule.Action)
+		i++
+		t += strconv.Itoa(i)
+		t += fmt.Sprintf("Type: %s, Text: %s, Action: %s\n", rule.Type, rule.Text, rule.Action)
 	}
 	return t
 }

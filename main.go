@@ -16,23 +16,28 @@ var (
 )
 
 func init() {
-	// Определяем флаги для файлов конфигурации
+	// cmd flags
 	flag.StringVar(&configFile, "config", "config.yaml", "Path to the configuration file")
-	flag.StringVar(&rulesFile, "rules", "rules.txt", "Path to the rules file")
+	flag.StringVar(&rulesFile, "rules", "rules.list", "Path to the rules file")
 }
 
 func main() {
-	// Парсим аргументы командной строки
+	// Parce input CMD
 	flag.Parse()
 
-	// Загружаем конфигурации и правила
+	// Loading config
 	loadConfig(configFile)
-	ParseConfig(rulesFile) // Загружаем правила в срез Rules
+
+	ParseRuleset(rulesFile) // Load rules slice
+	log.Println("Rules: ", Cnt["RulesAll"].Get())
+	log.Println("...accepted: ", Cnt["RulesActive"].Get())
+	//log.Println(config.Actions["PROXY"])
+	//log.Println(PrintRules(Rules))
 	go StartHTTPServer()
 
 	//cacheChan = make(chan cacheRequest)
-	go startExpiryChecker()
 	go cacheHandler()
+	go startExpiryChecker()
 
 	// Обработка системных сигналов для корректного завершения работы
 	sigChan := make(chan os.Signal, 1)
@@ -51,7 +56,7 @@ func main() {
 		}
 	}()
 
-	// Ожидание сигнала завершения
+	// Exit
 	sig := <-sigChan
 	log.Printf("Received signal: %s. Shutting down...", sig)
 
@@ -60,5 +65,9 @@ func main() {
 
 	// Остановка сервера
 	server.Shutdown()
+
+	// Отчистка всех правил
+	ScriptResetAll()
+
 	log.Println("Server gracefully stopped")
 }

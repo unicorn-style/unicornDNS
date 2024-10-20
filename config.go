@@ -2,9 +2,9 @@ package main
 
 import (
 	"log"
-	"net"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
@@ -21,22 +21,31 @@ type Config struct {
 }
 
 type Network struct {
-	CIDR string `yaml:"cidr"`
+	IPv4 string `yaml:"ipv4"`
+	IPv6 string `yaml:"ipv6"`
 }
 
 type Action struct {
-	Mark           string   `yaml:"mark"`
-	DNSForward     string   `yaml:"dns-forward"`
-	TTLMinRewrite  uint32   `yaml:"ttl-rewrite"`
-	TTLMaxTransfer uint32   `yaml:"ttl-max-client"`
-	IPv4Lists      []string `yaml:"ipv4-lists"`
-	IPv6Lists      []string `yaml:"ipv6-lists"`
-	IPv4Add        string   `yaml:"ipv4-run-add"`
-	IPv4Delete     string   `yaml:"ipv4-run-delete"`
-	IPv4Reset      string   `yaml:"ipv4-run-reset"`
-	IPv6Add        string   `yaml:"ipv6-run-add"`
-	IPv6Delete     string   `yaml:"ipv6-run-delete"`
-	IPv6Reset      string   `yaml:"ipv6-run-reset"`
+	Mark        string            `yaml:"mark"`
+	DNSForward  string            `yaml:"dns-forward"`
+	Method      string            `yaml:"method"`
+	FakeIPDelay uint32            `yaml:"fakeip-lease-delay"`
+	Variable    map[string]string `yaml:"variable"`
+	TTL         TTL               `yaml:"ttl"`
+	FakeIPNet   []string          `yaml:"fakeip-networks"`
+	Script      Scripts           `yaml:"script"`
+}
+
+type Scripts struct {
+	Add     string `yaml:"add"`
+	Delete  string `yaml:"delete"`
+	OnStart string `yaml:"onstart"`
+	OnReset string `yaml:"onreset"`
+}
+type TTL struct {
+	MaxTrasfer uint32 `yaml:"max-transfer"`
+	MinRewrite uint32 `yaml:"min-rewrite"`
+	MaxRewrite uint32 `yaml:"max-rewrite"`
 }
 
 var (
@@ -46,6 +55,16 @@ var (
 	mutexes     map[string]*sync.Mutex
 	validNameRe = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 )
+
+func replaceVariables(text string, variables map[string]string) string {
+	for key, value := range variables {
+		// Меняем все вхождения переменных вида {key} на их значение
+		placeholder := "{" + key + "}"
+		text = strings.ReplaceAll(text, placeholder, value)
+	}
+	//log.Printf(text)
+	return text
+}
 
 func loadConfig(filename string) {
 	data, err := os.ReadFile(filename)
@@ -61,41 +80,32 @@ func loadConfig(filename string) {
 	ipv4Pools = make(map[string][]IPEntry)
 	ipv6Pools = make(map[string][]IPEntry)
 	mutexes = make(map[string]*sync.Mutex)
+	allocatedMutex = &sync.Mutex{}
 
 	for name, network := range config.Networks {
 		if !validNameRe.MatchString(name) {
 			log.Fatalf("Invalid network name: %s", name)
 		}
 		log.Printf("CONFIG NET %s", name)
-		ipv4Pools[name] = generateIPPool(network.CIDR)
-		ipv6Pools[name] = generateIPPool(network.CIDR)
+		if len(network.IPv4) > 0 {
+			ipv4Pools[name] = generateIPPool(network.IPv4)
+		}
+		if len(network.IPv6) > 0 {
+			ipv6Pools[name] = generateIPPool(network.IPv6)
+		}
 		mutexes[name] = &sync.Mutex{}
 	}
-}
 
-func generateIPPool(cidr string) []IPEntry {
-	_, ipnet, err := net.ParseCIDR(cidr)
-	if err != nil {
-		log.Fatalf("Failed to parse CIDR: %s\n", err)
-	}
-
-	var pool []IPEntry
-	for ip := ipnet.IP.Mask(ipnet.Mask); ipnet.Contains(ip); incrementIP(ip) {
-		pool = append(pool, IPEntry{IP: ip.String(), InUse: false})
-	}
-
-	// Removing network and broadcast addresses for IPv4
-	if ipnet.IP.To4() != nil {
-		return pool[1 : len(pool)-1]
-	}
-	return pool
-}
-
-func incrementIP(ip net.IP) {
-	for j := len(ip) - 1; j >= 0; j-- {
-		ip[j]++
-		if ip[j] > 0 {
-			break
+	// Проходим по всем действиям и применяем замену переменных
+	for actionName, action := range config.Actions {
+		if len(action.Variable) > 0 {
+			action.Script.Add = replaceVariables(action.Script.Add, action.Variable)
+			action.Script.Delete = replaceVariables(action.Script.Delete, action.Variable)
+			action.Script.OnStart = replaceVariables(action.Script.OnStart, action.Variable)
+			action.Script.OnReset = replaceVariables(action.Script.OnReset, action.Variable)
 		}
+		config.Actions[actionName] = action
+		log.Printf("Action %s processed", actionName)
+		ScriptOnStart(actionName)
 	}
 }

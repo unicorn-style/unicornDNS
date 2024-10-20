@@ -1,0 +1,31 @@
+server:
+  bind-address: "$BIND_ADDRESS"
+  dns-forward: "$DNS_FORWARD"
+  http-server: "$HTTP_BINDADDRESS"
+
+networks:
+  private:
+    ipv4: "$DEFAULT_IPV4_CIDR"
+    ipv6: "$DEFAULT_IPV6_CIDR"
+
+actions:
+  PROXY:
+    method: "fakeip"
+    fakeip-release-delay: "600"
+    ttl:
+      max-transfer: "120"
+      min_rewrite: "100"
+      max_rewrite: "300"
+    dns-forward: "$DNS_FORWARD"
+    variable:
+      wan: "$IFACE"
+      mark: "PROXY"
+      tname: "$TNAME_NAT"
+      nets: "$INSTALLTYPE"
+    network:
+        - "private"
+    script:
+      add: "sh sh/nftables/add.sh {fakeIP_private} {realIP} {mark} {wan} {tname}"
+      delete: "sh sh/nftables/delete.sh {fakeIP_private} {realIP} {mark} {wan} {tname}"
+      onreset: "sh sh/nftables/onReset.sh {tname} {nets}"
+      onstart: "sh sh/nftables/onStart.sh {tname}"
