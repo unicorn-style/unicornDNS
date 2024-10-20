@@ -1,12 +1,12 @@
 #!/bin/bash
 
 if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 {mark} {type}"
+  echo "Usage: $0 {mark} {NETTYPE}"
   exit 1
 fi
 
 MARK=$1
-TYPE=$2
+NETTYPE=$2
 
 # Function delete iptables rules with mark
 delete_rules_with_mark() {
@@ -37,12 +37,12 @@ delete_rules_with_mark6() {
   done
 }
 
-if  ["$TYPE" = "ipv4"] || ["$TYPE" = "ipv4ipv6"]; then 
+if [ "$NETTYPE" = "ipv4"] || [ "$NETTYPE" = "ipv4ipv6" ]; then 
 delete_rules_with_mark nat PREROUTING $MARK
 delete_rules_with_mark nat POSTROUTING $MARK
 delete_rules_with_mark filter FORWARD $MARK
 fi
-if  ["$TYPE" = "ipv6"] || ["$TYPE" = "ipv4ipv6"]; then 
+if [ "$NETTYPE" = "ipv6" ] || [ "$NETTYPE" = "ipv4ipv6" ]; then 
 delete_rules_with_mark6 nat PREROUTING $MARK
 delete_rules_with_mark6 nat POSTROUTING $MARK
 delete_rules_with_mark6 filter FORWARD $MARK
