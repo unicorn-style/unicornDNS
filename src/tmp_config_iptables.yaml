@@ -21,9 +21,9 @@ actions:
       wan: "$IFACE"
       mark: "PROXY"
       nets: "$INSTALLTYPE"
-    network:
+    fakeip-networks:
         - "private"
     script:
       add: "sh sh/iptables/add.sh {fakeIP_private} {realIP} {mark} {wan}"
       delete: "sh sh/iptables/delete.sh {fakeIP_private} {realIP} {mark} {wan}"
-      onReset: "sh sh/iptables/onReset.sh {mark} {nets}"
+      onreset: "sh sh/iptables/onReset.sh {mark} {nets}"

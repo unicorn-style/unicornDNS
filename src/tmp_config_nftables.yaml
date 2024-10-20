@@ -22,7 +22,7 @@ actions:
       mark: "PROXY"
       tname: "$TNAME_NAT"
       nets: "$INSTALLTYPE"
-    network:
+    fakeip-networks:
         - "private"
     script:
       add: "sh sh/nftables/add.sh {fakeIP_private} {realIP} {mark} {wan} {tname}"

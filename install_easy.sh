@@ -101,7 +101,7 @@ echo "Enter default DNS forward address (default $DNS_FORWARD):"
 read DNS_FORWARD_INPUT
 DNS_FORWARD=${DNS_FORWARD_INPUT:-$DNS_FORWARD}
 
-echo "Enter default HTTP address ip:port for controll this server. This  (по умолчанию $HTTP_BINDADDRESS):"
+echo "Enter default HTTP address ip:port for controll this server. This  (default $HTTP_BINDADDRESS):"
 read HTTP_BINDADDRESS_INPUT
 HTTP_BINDADDRESS=${HTTP_BINDADDRESS_INPUT:-$HTTP_BINDADDRESS}
 
@@ -198,15 +198,6 @@ curl -o "tmp_config_$FIREWALL_TYPE.yaml" "$URL/src/tmp_config_$FIREWALL_TYPE.yam
 envsubst < tmp_config_$FIREWALL_TYPE.yaml > "$INSTALL_DIR/config.yaml"
 rm tmp_config_$FIREWALL_TYPE.yaml
 
-unset BIND_ADDRESS
-unset DNS_FORWARD
-unset HTTP_BINDADDRESS
-unset IFACE
-unset TNAME_NAT
-unset DEFAULT_IPV4_CIDR
-unset DEFAULT_IPV6_CIDR
-unset INSTALLTYPE
-
 # Скачивание и распаковка сборки в зависимости от архитектуры
 curl -o "$INSTALL_DIR/unicornDNS.tar.gz" "$DOWNLOAD_URL"
 mkdir $INSTALL_DIR
@@ -255,7 +246,16 @@ fi
 echo "UnicornDNS successfully installed at $INSTALLPATH"
 echo " – Config file: $INSTALLPATH/config.yaml"
 echo " – Rules file: $INSTALLPATH/rules.list"
-echo "\n\nUse these commands to controll"
-echo "http://$HTTP_BINDADDRESS/reset - reset firewall and cache"
-echo "http://$HTTP_BINDADDRESS/clearcache - flush DNS-cache server"
-echo "http://$HTTP_BINDADDRESS/reload - reload rule list"
+echo "Use these commands to controll"
+echo " – http://$HTTP_BINDADDRESS/reset - reset firewall and cache"
+echo " – http://$HTTP_BINDADDRESS/clearcache - flush DNS-cache server"
+echo " – http://$HTTP_BINDADDRESS/reload - reload rule list
+
+unset BIND_ADDRESS
+unset DNS_FORWARD
+unset HTTP_BINDADDRESS
+unset IFACE
+unset TNAME_NAT
+unset DEFAULT_IPV4_CIDR
+unset DEFAULT_IPV6_CIDR
+unset INSTALLTYPE
