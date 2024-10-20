@@ -9,7 +9,11 @@
 
 ## 1. Установка
 
-### Шаги для сборки
+```sh
+sudo bash -c "$(curl -fsSL https://github.com/unicorn-style/unicornDNS/raw/main/install_easy.sh)"
+```
+
+### Шаги для самостоятельной сборки
 1. Сборка сервера:
     ```sh
     git clone https://github.com/unicorn-style/unicornDNS/
@@ -47,9 +51,7 @@
 
 ### [Пример реализации](doc/ROS7.md)
 
-### [Пример простой конфигурации](example/config.yaml)
-
-### [Пример конфигурации с описанием](example/config_2.yaml)
+### [Пример простой конфигурации](example/config_iptables.yaml)
 
 ### [Пример правил](example/rules.txt)
 

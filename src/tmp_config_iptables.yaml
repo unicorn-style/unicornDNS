@@ -24,6 +24,6 @@ actions:
     fakeip-networks:
         - "private"
     script:
-      add: "sh sh/iptables/add.sh {inet} {fakeIP_private} {realIP} {mark} {wan}"
-      delete: "sh sh/iptables/delete.sh {inet} {fakeIP_private} {realIP} {mark} {wan}"
-      onreset: "sh sh/iptables/onReset.sh {mark} {nets}"
+      add: "sh sh/add.sh {inet} {fakeIP_private} {realIP} {mark} {wan}"
+      delete: "sh sh/delete.sh {inet} {fakeIP_private} {realIP} {mark} {wan}"
+      onreset: "sh sh/onReset.sh {mark} {nets}"

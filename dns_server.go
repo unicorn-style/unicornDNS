@@ -304,12 +304,15 @@ func addRoute(domain, recordType string, realIP string, ttl uint32, actionName s
 	rule = action.Script.Add
 	//log.Println("ADD:", rule)
 	ruleD = action.Script.Delete
+	itype := ""
 	for _, NetName := range action.FakeIPNet {
 		if recordType == "A" {
+			itype = "4"
 			localIPs = allocateIP(NetName, 4, ipv4Pools)
 		}
 		if recordType == "AAAA" {
 			localIPs = allocateIP(NetName, 6, ipv6Pools)
+			itype = "6"
 		}
 		ipMappings[localIPs] = &IPMapping{
 			Domain:     domain,
@@ -323,12 +326,16 @@ func addRoute(domain, recordType string, realIP string, ttl uint32, actionName s
 		// Добавляем новое сопоставление
 
 		rule = strings.ReplaceAll(rule, fmt.Sprintf("{fakeIP_%v}", NetName), localIPs)
-		ruleD = strings.ReplaceAll(ruleD, fmt.Sprintf("{fakeIP_%v}", NetName), localIPs)
 		rule = strings.ReplaceAll(rule, "{realIP}", realIP)
+		rule = strings.ReplaceAll(rule, "{inet}", itype)
+		//delete rules
 		ruleD = strings.ReplaceAll(ruleD, "{realIP}", realIP)
+		ruleD = strings.ReplaceAll(ruleD, fmt.Sprintf("{fakeIP_%v}", NetName), localIPs)
+		ruleD = strings.ReplaceAll(ruleD, "{inet}", itype)
 		ipMappings[localIPs].CmdDelete = ruleD
-		//log.Println("ADD:", rule)
+		log.Println("ADD:", rule)
 		//log.Println("DEL:", ruleD)
+
 		exec.Command("sh", "-c", rule).Run()
 	}
 	return localIPs
