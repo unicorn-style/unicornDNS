@@ -5,10 +5,11 @@ if [ "$#" -ne 5 ]; then
   exit 1
 fi
 
-LOCAL_IP=$1
-DESTINATION=$2
-MARK=$3
-INTERFACE=$4
+INET=$1
+LOCAL_IP=$2
+DESTINATION=$3
+MARK=$4
+INTERFACE=$5
 
 # Delete rules
 if [ "$INET" = "4" ]; then
