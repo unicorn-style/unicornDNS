@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ "$#" -ne 1 ]; then
+if [ "$#" -ne 2 ]; then
   echo "Usage: $0 {mark} {NETTYPE}"
   exit 1
 fi
@@ -37,7 +37,7 @@ delete_rules_with_mark6() {
   done
 }
 
-if [ "$NETTYPE" = "ipv4"] || [ "$NETTYPE" = "ipv4ipv6" ]; then 
+if [ "$NETTYPE" = "ipv4" ] || [ "$NETTYPE" = "ipv4ipv6" ]; then 
 delete_rules_with_mark nat PREROUTING $MARK
 delete_rules_with_mark nat POSTROUTING $MARK
 delete_rules_with_mark filter FORWARD $MARK

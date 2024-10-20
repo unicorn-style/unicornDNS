@@ -230,7 +230,7 @@ Description=UnicornDNS Service
 After=network.target
 
 [Service]
-ExecStart=$INSTALL_DIR/unicornDNS -rules $INSTALL_DIR/rules.txt -config $INSTALL_DIR/config.yaml
+ExecStart=$INSTALL_DIR/unicornDNS -rules $INSTALL_DIR/rules.list -config $INSTALL_DIR/config.yaml
 WorkingDirectory=$INSTALL_DIR
 Restart=on-failure
 
